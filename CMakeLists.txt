@@ -46,6 +46,11 @@ add_executable(advanced_demo examples/advanced_demo.cpp)
 target_link_libraries(advanced_demo PRIVATE pfc Threads::Threads)
 target_compile_options(advanced_demo PRIVATE -Wall -Wextra -O2)
 
+# New codecs demo
+add_executable(new_codecs_demo examples/new_codecs_demo.cpp)
+target_link_libraries(new_codecs_demo PRIVATE pfc)
+target_compile_options(new_codecs_demo PRIVATE -Wall -Wextra -O2)
+
 # Misc examples (optional)
 option(BUILD_MISC_EXAMPLES "Build miscellaneous examples" OFF)
 if(BUILD_MISC_EXAMPLES)
@@ -92,9 +97,21 @@ add_executable(test_crc tests/test_crc.cpp tests/catch_amalgamated.cpp)
 target_link_libraries(test_crc PRIVATE pfc)
 target_compile_options(test_crc PRIVATE -Wall -Wextra -O2)
 
+# New codecs tests (VByte, ExpGolomb, EliasOmega)
+add_executable(test_new_codecs tests/test_new_codecs.cpp tests/catch_amalgamated.cpp)
+target_link_libraries(test_new_codecs PRIVATE pfc)
+target_compile_options(test_new_codecs PRIVATE -Wall -Wextra -O2)
+
+# Succinct data structures tests
+add_executable(test_succinct tests/test_succinct.cpp tests/catch_amalgamated.cpp)
+target_link_libraries(test_succinct PRIVATE pfc)
+target_compile_options(test_succinct PRIVATE -Wall -Wextra -O2)
+
 include(CTest)
 add_test(NAME pfc_tests COMMAND pfc_tests)
 add_test(NAME test_advanced COMMAND test_advanced)
 add_test(NAME test_production COMMAND test_production)
 add_test(NAME test_stream_arithmetic COMMAND test_stream_arithmetic)
 add_test(NAME test_crc COMMAND test_crc)
+add_test(NAME test_new_codecs COMMAND test_new_codecs)
+add_test(NAME test_succinct COMMAND test_succinct)

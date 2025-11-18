@@ -79,6 +79,7 @@ nav:
     - Coordinates: api/coordinates.md
     - Error Handling: api/error-handling.md
     - Compression: api/compression.md
+    - Succinct Structures: api/succinct.md
     - CRC: api/crc.md
   - Examples:
     - Basic Usage: examples/basic.md

@@ -5,6 +5,8 @@
 #include "core.hpp"
 #include <limits>
 #include <array>
+#include <vector>
+#include <utility>
 
 namespace pfc::codecs {
 
@@ -310,9 +312,193 @@ struct Signed {
     }
 };
 
+// ============================================================
+//  VByte (Variable Byte / Varint) - Industry standard codec
+//  Protocol Buffers compatible, cache-friendly, SIMD-ready
+// ============================================================
+
+struct VByte {
+    template<std::unsigned_integral T, typename Sink>
+    static void encode(T value, Sink& sink) requires BitSink<Sink> {
+        // Each byte: 7 bits data (LSB first) + 1 continuation bit (MSB)
+        // Continuation bit: 0 = more bytes follow, 1 = last byte
+        do {
+            uint8_t byte = value & 0x7F;
+            value >>= 7;
+            if (value != 0) {
+                // More bytes to follow, continuation bit = 0
+                for (int i = 0; i < 8; ++i) {
+                    sink.write((byte >> i) & 1);
+                }
+            } else {
+                // Last byte, continuation bit = 1
+                byte |= 0x80;
+                for (int i = 0; i < 8; ++i) {
+                    sink.write((byte >> i) & 1);
+                }
+            }
+        } while (value != 0);
+    }
+
+    template<std::unsigned_integral T>
+    static T decode(auto& source) requires BitSource<decltype(source)> {
+        T result = 0;
+        int shift = 0;
+
+        while (true) {
+            // Read 8 bits
+            uint8_t byte = 0;
+            for (int i = 0; i < 8; ++i) {
+                byte |= static_cast<uint8_t>(source.read()) << i;
+            }
+
+            // Extract data bits (lower 7 bits)
+            T data = byte & 0x7F;
+            result |= data << shift;
+
+            // Check continuation bit (MSB)
+            if (byte & 0x80) {
+                // Last byte, we're done
+                break;
+            }
+
+            shift += 7;
+        }
+
+        return result;
+    }
+};
+
+// ============================================================
+//  Exponential-Golomb - Parameterized family used in video coding
+//  Order 0 = Elias Gamma, higher orders = flatter distribution
+// ============================================================
+
+template<size_t Order = 0>
+struct ExpGolomb {
+    static_assert(Order < 32, "Order must be less than 32");
+
+    template<std::unsigned_integral T>
+    static void encode(T value, auto& sink) requires BitSink<decltype(sink)> {
+        // Map input: value → value + 2^Order - 1
+        T mapped = value + (1u << Order) - 1;
+
+        // Compute q and r
+        T q = mapped >> Order;  // quotient: mapped / 2^Order
+        T r = mapped & ((1u << Order) - 1);  // remainder: mapped % 2^Order
+
+        // Encode q+1 in unary (length q, then a 1 bit)
+        int len = msb_position(q + 1) + 1;
+
+        // Write len-1 zeros
+        for (int i = 0; i < len - 1; ++i) {
+            sink.write(false);
+        }
+
+        // Write q+1 in binary (including implicit leading 1)
+        for (int i = len - 1; i >= 0; --i) {
+            sink.write(((q + 1) >> i) & 1);
+        }
+
+        // Write remainder in binary (Order bits)
+        for (size_t i = 0; i < Order; ++i) {
+            sink.write((r >> i) & 1);
+        }
+    }
+
+    template<std::unsigned_integral T>
+    static T decode(auto& source) requires BitSource<decltype(source)> {
+        // Count leading zeros
+        int zeros = 0;
+        while (!source.read()) {
+            ++zeros;
+        }
+
+        // Read zeros more bits to get q+1
+        T q_plus_1 = 1;
+        for (int i = 0; i < zeros; ++i) {
+            q_plus_1 = (q_plus_1 << 1) | source.read();
+        }
+        T q = q_plus_1 - 1;
+
+        // Read remainder (Order bits)
+        T r = 0;
+        for (size_t i = 0; i < Order; ++i) {
+            r |= static_cast<T>(source.read()) << i;
+        }
+
+        // Reconstruct mapped value
+        T mapped = (q << Order) | r;
+
+        // Unmap: mapped → value
+        return mapped - (1u << Order) + 1;
+    }
+};
+
+// Convenience aliases for common orders
+using ExpGolomb0 = ExpGolomb<0>;  // Same as Elias Gamma
+using ExpGolomb1 = ExpGolomb<1>;
+using ExpGolomb2 = ExpGolomb<2>;
+
+// ============================================================
+//  Elias Omega - Recursive length encoding
+//  More efficient than Delta for large integers
+// ============================================================
+
+struct EliasOmega {
+    template<std::unsigned_integral T>
+    static void encode(T value, auto& sink) requires BitSink<decltype(sink)> {
+        ++value;  // Map 0→1, 1→2, etc.
+
+        // Build list of binary representations bottom-up
+        std::vector<std::pair<T, int>> stack;
+
+        while (value > 1) {
+            int len = msb_position(value) + 1;
+            stack.emplace_back(value, len);
+            value = len - 1;  // Encode length-1 next
+        }
+
+        // Write components in reverse order (top-down)
+        for (auto it = stack.rbegin(); it != stack.rend(); ++it) {
+            auto [val, len] = *it;
+            // Write value in binary (MSB to LSB)
+            for (int i = len - 1; i >= 0; --i) {
+                sink.write((val >> i) & 1);
+            }
+        }
+
+        // Terminator: write a 0 bit
+        sink.write(false);
+    }
+
+    template<std::unsigned_integral T>
+    static T decode(auto& source) requires BitSource<decltype(source)> {
+        T n = 1;  // Start with implicit 1
+
+        while (source.peek() && source.read()) {
+            // Read a 1 bit: we need to read more
+            // Current n tells us how many bits to read next
+            T next = 1;  // Implicit leading 1
+
+            for (T i = 0; i < n; ++i) {
+                next = (next << 1) | source.read();
+            }
+
+            n = next;
+        }
+
+        // We've either read a 0 (terminator) or reached end
+        // n contains the decoded value + 1
+        return n - 1;  // Map back: 1→0, 2→1, etc.
+    }
+};
+
 // Convenience aliases
 using SignedGamma = Signed<EliasGamma>;
 using SignedDelta = Signed<EliasDelta>;
 using SignedFibonacci = Signed<Fibonacci>;
+using SignedVByte = Signed<VByte>;
+using SignedOmega = Signed<EliasOmega>;
 
 } // namespace pfc::codecs

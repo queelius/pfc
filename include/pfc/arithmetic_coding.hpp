@@ -265,7 +265,7 @@ public:
             } else if (low_ >= first_quarter && high_ < third_quarter) {
                 bits_to_follow_++;
                 low_ = (low_ - first_quarter) * 2;
-                high_ = (high_ - third_quarter) * 2 + 1;
+                high_ = (high_ - first_quarter) * 2 + 1;
             } else {
                 break;
             }
@@ -328,8 +328,10 @@ public:
         }
 
         // Use uint64_t to prevent overflow in intermediate calculations
-        uint64_t v = value_ - low_ + 1;
-        uint32_t scaled_value = static_cast<uint32_t>((v * total - 1) / range);
+        // The encoder computes: new_low = low_ + (range * cum_freq) / total
+        // To invert: cum_freq = ((value_ - low_) * total) / range
+        uint64_t v = value_ - low_;
+        uint32_t scaled_value = static_cast<uint32_t>((v * total) / range);
 
         // Find symbol
         std::size_t symbol = model.find_symbol(scaled_value);
@@ -362,7 +364,7 @@ public:
                 value_ = ((value_ - half) * 2) | (read_bit() ? 1 : 0);
             } else if (low_ >= first_quarter && high_ < third_quarter) {
                 low_ = (low_ - first_quarter) * 2;
-                high_ = (high_ - third_quarter) * 2 + 1;
+                high_ = (high_ - first_quarter) * 2 + 1;
                 value_ = ((value_ - first_quarter) * 2) | (read_bit() ? 1 : 0);
             } else {
                 break;
@@ -379,8 +381,8 @@ public:
 // ============================================================
 
 class range_encoder {
-    static constexpr uint64_t top = 1ULL << 32;
-    static constexpr uint64_t bottom = 1ULL << 24;
+    static constexpr uint64_t top = 1ULL << 56;      // Use 56-bit range
+    static constexpr uint64_t bottom = 1ULL << 48;   // Normalize when range < 2^48
 
     BitWriter* sink_;
     uint64_t low_ = 0;
@@ -388,8 +390,9 @@ class range_encoder {
 
     void normalize() {
         while (range_ < bottom) {
-            sink_->write_bits(low_ >> 24, 8);
-            low_ = (low_ & 0xFFFFFF) << 8;
+            // Output top byte
+            sink_->write_bits((low_ >> 56) & 0xFF, 8);
+            low_ <<= 8;
             range_ <<= 8;
         }
     }
@@ -408,43 +411,42 @@ public:
         uint32_t cum_freq = model.cumulative_frequency(symbol);
         uint32_t freq = model.frequency(symbol);
 
-        range_ /= total;
-        if (range_ == 0) range_ = 1;  // Prevent range collapse
-        low_ += cum_freq * range_;
-        range_ *= freq;
-        if (range_ == 0) range_ = 1;  // Prevent range collapse after multiplication
+        // Simple 64-bit arithmetic, no overflow possible
+        low_ += (range_ * cum_freq) / total;
+        range_ = (range_ * freq) / total;
+
+        if (range_ == 0) range_ = 1;
 
         normalize();
         model.update(symbol);
     }
 
     void encode_bit(bool bit, uint32_t prob_zero) {
-        // prob_zero is in range [1, 0xFFFF]
         uint32_t prob_scale = 0x10000;
-        range_ /= prob_scale;
 
         if (!bit) {
-            range_ *= prob_zero;
+            range_ = (range_ * prob_zero) / prob_scale;
         } else {
-            low_ += prob_zero * range_;
-            range_ *= (prob_scale - prob_zero);
+            low_ += (range_ * prob_zero) / prob_scale;
+            range_ = (range_ * (prob_scale - prob_zero)) / prob_scale;
         }
 
+        if (range_ == 0) range_ = 1;
         normalize();
     }
 
     void finish() {
-        // Output remaining bytes
-        for (int i = 0; i < 5; ++i) {
-            sink_->write_bits((low_ >> 24) & 0xFF, 8);
+        // Output remaining bytes (7 bytes for 56-bit value)
+        for (int i = 0; i < 7; ++i) {
+            sink_->write_bits((low_ >> 56) & 0xFF, 8);
             low_ <<= 8;
         }
     }
 };
 
 class range_decoder {
-    static constexpr uint64_t top = 1ULL << 32;
-    static constexpr uint64_t bottom = 1ULL << 24;
+    static constexpr uint64_t top = 1ULL << 56;      // Match encoder
+    static constexpr uint64_t bottom = 1ULL << 48;   // Match encoder
 
     BitReader* source_;
     uint64_t low_ = 0;
@@ -454,15 +456,15 @@ class range_decoder {
     void normalize() {
         while (range_ < bottom) {
             code_ = (code_ << 8) | source_->read_bits(8);
-            low_ = (low_ & 0xFFFFFF) << 8;
+            low_ <<= 8;
             range_ <<= 8;
         }
     }
 
 public:
     explicit range_decoder(BitReader& source) : source_(&source) {
-        // Initialize with first 32 bits
-        for (int i = 0; i < 4; ++i) {
+        // Initialize with first 7 bytes (56 bits)
+        for (int i = 0; i < 7; ++i) {
             code_ = (code_ << 8) | source_->read_bits(8);
         }
     }
@@ -475,23 +477,22 @@ public:
             return 0;  // Can't decode with empty model
         }
 
-        // Prevent division by zero
-        uint64_t scale = range_ / total;
-        if (scale == 0) scale = 1;
-        uint64_t temp = (code_ - low_) / scale;
+        // Find symbol by computing scaled value
+        // Use the same formula as encoder to avoid rounding errors
+        uint64_t helper = ((code_ - low_) + 1) * total - 1;
+        uint64_t scaled_value = helper / range_;
 
         // Find symbol
-        std::size_t symbol = model.find_symbol(static_cast<uint32_t>(temp));
+        std::size_t symbol = model.find_symbol(static_cast<uint32_t>(scaled_value));
 
-        // Update range
+        // Update range - must match encoder exactly
         uint32_t cum_freq = model.cumulative_frequency(symbol);
         uint32_t freq = model.frequency(symbol);
 
-        range_ /= total;
+        low_ += (range_ * cum_freq) / total;
+        range_ = (range_ * freq) / total;
+
         if (range_ == 0) range_ = 1;  // Prevent range collapse
-        low_ += cum_freq * range_;
-        range_ *= freq;
-        if (range_ == 0) range_ = 1;  // Prevent range collapse after multiplication
 
         normalize();
         model.update(symbol);
@@ -500,17 +501,19 @@ public:
 
     bool decode_bit(uint32_t prob_zero) {
         uint32_t prob_scale = 0x10000;
-        uint64_t threshold = low_ + (range_ / prob_scale) * prob_zero;
+
+        uint64_t threshold = low_ + (range_ * prob_zero) / prob_scale;
 
         bool bit = (code_ >= threshold);
 
         if (!bit) {
-            range_ = (range_ / prob_scale) * prob_zero;
+            range_ = (range_ * prob_zero) / prob_scale;
         } else {
             low_ = threshold;
-            range_ = (range_ / prob_scale) * (prob_scale - prob_zero);
+            range_ = (range_ * (prob_scale - prob_zero)) / prob_scale;
         }
 
+        if (range_ == 0) range_ = 1;
         normalize();
         return bit;
     }

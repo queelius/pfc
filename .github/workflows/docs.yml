@@ -1,0 +1,76 @@
+name: Deploy Documentation
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'docs/**'
+      - 'mkdocs.yml'
+      - 'README.md'
+      - 'include/**'
+      - '.github/workflows/docs.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  deploy-mkdocs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git Credentials
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+          cache: 'pip'
+
+      - name: Install MkDocs dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Build MkDocs site
+        run: mkdocs build --strict --verbose
+
+      - name: Deploy to GitHub Pages
+        run: mkdocs gh-deploy --force
+
+  build-doxygen:
+    runs-on: ubuntu-latest
+    needs: deploy-mkdocs
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Doxygen
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y doxygen graphviz
+
+      - name: Generate Doxygen documentation
+        run: doxygen Doxyfile
+
+      - name: Upload Doxygen artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: doxygen-html
+          path: docs/api-reference/html/
+          retention-days: 90
+
+      - name: Deploy Doxygen to gh-pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: docs/api-reference/html
+          destination_dir: api-reference
+          keep_files: true

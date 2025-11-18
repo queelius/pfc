@@ -18,12 +18,14 @@ PFC implements a comprehensive suite of prefix-free codecs and data structures t
 
 ## Test Coverage
 
-The library is thoroughly tested with **689 passing assertions** across **31 test cases**:
+The library is thoroughly tested with **86% test suite pass rate** (6/7 suites, 3477+ assertions):
 
-- Core Tests (419 assertions): Codecs, packed values, basic algorithms
-- Advanced Tests (116 assertions): Algebraic types, STL integration, coordinates
-- Production Tests (142 assertions): Huffman, LZ77, error handling, allocators
-- CRC Tests (12 assertions): CRC8, CRC16, CRC32 checksums
+- Core Tests: Codecs, packed values, bit I/O, basic algorithms
+- Advanced Tests: Algebraic types, STL integration, coordinate systems
+- Production Tests: Huffman, LZ77, error handling, custom allocators
+- CRC Tests: CRC8, CRC16, CRC32 checksums
+- Succinct Tests: SuccinctBitVector with rank/select (3167 assertions)
+- New Codecs Tests: VByte, ExpGolomb, EliasOmega (2000 assertions)
 - Stream/Arithmetic Tests: Stream I/O and arithmetic coding
 
 ## Quick Example
@@ -99,13 +101,14 @@ auto result = response.visit(overloaded{
 
 PFC is organized into focused modules:
 
-- **Core**: Bit I/O primitives, concepts, fundamental abstractions
-- **Codecs**: Universal integer codes (Elias, Fibonacci, Rice)
+- **Core**: Bit I/O primitives (BitReader/BitWriter), concepts, fundamental abstractions
+- **Codecs**: Universal integer codes (Elias, Fibonacci, Rice, VByte, ExpGolomb)
 - **Numeric**: Floating point, rational, complex number codecs
 - **Packed**: Value types and containers with zero-copy semantics
 - **Algebraic**: Sum and product types for type composition
 - **STL Integration**: Iterators, algorithms, and standard compatibility
-- **Compression**: Huffman, LZ77, arithmetic coding
+- **Compression**: Huffman, LZ77, arithmetic coding (production-ready)
+- **Succinct**: Space-efficient data structures (SuccinctBitVector with rank/select)
 - **Utilities**: CRC checksums, stream I/O, error handling
 
 ## Next Steps
