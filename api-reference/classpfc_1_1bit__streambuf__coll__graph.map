@@ -1,0 +1,11 @@
+<map id="pfc::bit_streambuf" name="pfc::bit_streambuf">
+<area shape="rect" id="Node000001" title=" " alt="" coords="15,269,156,295"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,181,123,207"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="73,219,85,268,80,269,68,221"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="147,181,296,207"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="193,216,105,271,102,267,190,212"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="157,93,286,119"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="224,133,224,181,219,181,219,133"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="202,5,241,31"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="224,45,224,93,219,93,219,45"/>
+</map>

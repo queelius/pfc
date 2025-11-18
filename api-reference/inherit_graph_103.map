@@ -1,0 +1,9 @@
+<map id="Graphical Class Hierarchy" name="Graphical Class Hierarchy">
+<area shape="rect" id="Node000000" title=" " alt="" coords="5,31,123,56"/>
+<area shape="rect" id="Node000001" href="$classpfc_1_1bit__streambuf.html" title=" " alt="" coords="171,31,312,56"/>
+<area shape="poly" id="edge3_Node000000_Node000001" title=" " alt="" coords="136,41,170,41,170,46,136,46"/>
+<area shape="rect" id="Node000002" href="$classpfc_1_1input__bit__streambuf.html" title=" " alt="" coords="365,5,546,31"/>
+<area shape="poly" id="edge4_Node000001_Node000002" title=" " alt="" coords="326,31,364,26,365,31,326,36"/>
+<area shape="rect" id="Node000003" href="$classpfc_1_1output__bit__streambuf.html" title=" " alt="" coords="360,55,551,80"/>
+<area shape="poly" id="edge5_Node000001_Node000003" title=" " alt="" coords="326,50,360,54,359,59,326,55"/>
+</map>
