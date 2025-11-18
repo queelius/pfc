@@ -2,106 +2,110 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://queelius.github.io/pfc/</loc>
-         <lastmod>2025-11-12</lastmod>
+         <lastmod>2025-11-18</lastmod>
     </url>
     <url>
          <loc>https://queelius.github.io/pfc/api/algebraic/</loc>
-         <lastmod>2025-11-12</lastmod>
+         <lastmod>2025-11-18</lastmod>
     </url>
     <url>
          <loc>https://queelius.github.io/pfc/api/algorithms/</loc>
-         <lastmod>2025-11-12</lastmod>
+         <lastmod>2025-11-18</lastmod>
     </url>
     <url>
          <loc>https://queelius.github.io/pfc/api/codecs/</loc>
-         <lastmod>2025-11-12</lastmod>
+         <lastmod>2025-11-18</lastmod>
     </url>
     <url>
          <loc>https://queelius.github.io/pfc/api/compression/</loc>
-         <lastmod>2025-11-12</lastmod>
+         <lastmod>2025-11-18</lastmod>
     </url>
     <url>
          <loc>https://queelius.github.io/pfc/api/coordinates/</loc>
-         <lastmod>2025-11-12</lastmod>
+         <lastmod>2025-11-18</lastmod>
     </url>
     <url>
          <loc>https://queelius.github.io/pfc/api/core/</loc>
-         <lastmod>2025-11-12</lastmod>
+         <lastmod>2025-11-18</lastmod>
     </url>
     <url>
          <loc>https://queelius.github.io/pfc/api/crc/</loc>
-         <lastmod>2025-11-12</lastmod>
+         <lastmod>2025-11-18</lastmod>
     </url>
     <url>
          <loc>https://queelius.github.io/pfc/api/error-handling/</loc>
-         <lastmod>2025-11-12</lastmod>
+         <lastmod>2025-11-18</lastmod>
     </url>
     <url>
          <loc>https://queelius.github.io/pfc/api/numeric-codecs/</loc>
-         <lastmod>2025-11-12</lastmod>
+         <lastmod>2025-11-18</lastmod>
     </url>
     <url>
          <loc>https://queelius.github.io/pfc/api/overview/</loc>
-         <lastmod>2025-11-12</lastmod>
+         <lastmod>2025-11-18</lastmod>
     </url>
     <url>
          <loc>https://queelius.github.io/pfc/api/packed/</loc>
-         <lastmod>2025-11-12</lastmod>
+         <lastmod>2025-11-18</lastmod>
     </url>
     <url>
          <loc>https://queelius.github.io/pfc/api/stl-integration/</loc>
-         <lastmod>2025-11-12</lastmod>
+         <lastmod>2025-11-18</lastmod>
+    </url>
+    <url>
+         <loc>https://queelius.github.io/pfc/api/succinct/</loc>
+         <lastmod>2025-11-18</lastmod>
     </url>
     <url>
          <loc>https://queelius.github.io/pfc/examples/advanced/</loc>
-         <lastmod>2025-11-12</lastmod>
+         <lastmod>2025-11-18</lastmod>
     </url>
     <url>
          <loc>https://queelius.github.io/pfc/examples/algebraic/</loc>
-         <lastmod>2025-11-12</lastmod>
+         <lastmod>2025-11-18</lastmod>
     </url>
     <url>
          <loc>https://queelius.github.io/pfc/examples/basic/</loc>
-         <lastmod>2025-11-12</lastmod>
+         <lastmod>2025-11-18</lastmod>
     </url>
     <url>
          <loc>https://queelius.github.io/pfc/examples/codecs/</loc>
-         <lastmod>2025-11-12</lastmod>
+         <lastmod>2025-11-18</lastmod>
     </url>
     <url>
          <loc>https://queelius.github.io/pfc/examples/compression/</loc>
-         <lastmod>2025-11-12</lastmod>
+         <lastmod>2025-11-18</lastmod>
     </url>
     <url>
          <loc>https://queelius.github.io/pfc/examples/containers/</loc>
-         <lastmod>2025-11-12</lastmod>
+         <lastmod>2025-11-18</lastmod>
     </url>
     <url>
          <loc>https://queelius.github.io/pfc/guides/best-practices/</loc>
-         <lastmod>2025-11-12</lastmod>
+         <lastmod>2025-11-18</lastmod>
     </url>
     <url>
          <loc>https://queelius.github.io/pfc/guides/custom-codecs/</loc>
-         <lastmod>2025-11-12</lastmod>
+         <lastmod>2025-11-18</lastmod>
     </url>
     <url>
          <loc>https://queelius.github.io/pfc/guides/design-principles/</loc>
-         <lastmod>2025-11-12</lastmod>
+         <lastmod>2025-11-18</lastmod>
     </url>
     <url>
          <loc>https://queelius.github.io/pfc/guides/error-handling/</loc>
-         <lastmod>2025-11-12</lastmod>
+         <lastmod>2025-11-18</lastmod>
     </url>
     <url>
          <loc>https://queelius.github.io/pfc/guides/installation/</loc>
-         <lastmod>2025-11-12</lastmod>
+         <lastmod>2025-11-18</lastmod>
     </url>
     <url>
          <loc>https://queelius.github.io/pfc/guides/performance/</loc>
-         <lastmod>2025-11-12</lastmod>
+         <lastmod>2025-11-18</lastmod>
     </url>
     <url>
          <loc>https://queelius.github.io/pfc/guides/quick-start/</loc>
-         <lastmod>2025-11-12</lastmod>
+         <lastmod>2025-11-18</lastmod>
     </url>
 </urlset>
