@@ -596,3 +596,514 @@ TEST_CASE("SuccinctBitVector - Performance characteristics", "[succinct][perform
         REQUIRE(data_bits < bv.size() * 2);  // Less than 2x the data
     }
 }
+
+// ============================================================
+// RoaringBitmap Tests
+// ============================================================
+
+TEST_CASE("RoaringBitmap - Construction", "[roaring][construction]") {
+    SECTION("Default construction") {
+        RoaringBitmap rb;
+        REQUIRE(rb.empty());
+        REQUIRE(rb.size() == 0);
+        REQUIRE(rb.cardinality() == 0);
+    }
+
+    SECTION("Initializer list construction") {
+        RoaringBitmap rb{1, 5, 10, 100, 1000};
+        REQUIRE(rb.size() == 5);
+        REQUIRE(rb.contains(1));
+        REQUIRE(rb.contains(5));
+        REQUIRE(rb.contains(10));
+        REQUIRE(rb.contains(100));
+        REQUIRE(rb.contains(1000));
+        REQUIRE(!rb.contains(0));
+        REQUIRE(!rb.contains(2));
+        REQUIRE(!rb.contains(50));
+    }
+
+    SECTION("Construction from range") {
+        std::vector<uint32_t> values = {42, 100, 200, 300};
+        RoaringBitmap rb(values.begin(), values.end());
+        REQUIRE(rb.size() == 4);
+        for (uint32_t v : values) {
+            REQUIRE(rb.contains(v));
+        }
+    }
+}
+
+TEST_CASE("RoaringBitmap - Insert and Contains", "[roaring][insert]") {
+    SECTION("Insert single values") {
+        RoaringBitmap rb;
+        rb.insert(42);
+        REQUIRE(rb.contains(42));
+        REQUIRE(!rb.contains(41));
+        REQUIRE(!rb.contains(43));
+        REQUIRE(rb.size() == 1);
+    }
+
+    SECTION("Insert duplicate values") {
+        RoaringBitmap rb;
+        rb.insert(42);
+        rb.insert(42);
+        rb.insert(42);
+        REQUIRE(rb.size() == 1);
+        REQUIRE(rb.contains(42));
+    }
+
+    SECTION("Insert values across multiple chunks") {
+        RoaringBitmap rb;
+        // Values in different chunks (different high 16 bits)
+        rb.insert(0);               // Chunk 0
+        rb.insert(65536);           // Chunk 1
+        rb.insert(131072);          // Chunk 2
+        rb.insert(0xFFFFFFFF);      // Max chunk
+
+        REQUIRE(rb.size() == 4);
+        REQUIRE(rb.contains(0));
+        REQUIRE(rb.contains(65536));
+        REQUIRE(rb.contains(131072));
+        REQUIRE(rb.contains(0xFFFFFFFF));
+    }
+
+    SECTION("Insert sequential values") {
+        RoaringBitmap rb;
+        for (uint32_t i = 0; i < 1000; ++i) {
+            rb.insert(i);
+        }
+        REQUIRE(rb.size() == 1000);
+        for (uint32_t i = 0; i < 1000; ++i) {
+            REQUIRE(rb.contains(i));
+        }
+    }
+
+    SECTION("Insert sparse values") {
+        RoaringBitmap rb;
+        for (uint32_t i = 0; i < 100; ++i) {
+            rb.insert(i * 1000);
+        }
+        REQUIRE(rb.size() == 100);
+        for (uint32_t i = 0; i < 100; ++i) {
+            REQUIRE(rb.contains(i * 1000));
+            REQUIRE(!rb.contains(i * 1000 + 1));
+        }
+    }
+}
+
+TEST_CASE("RoaringBitmap - Remove", "[roaring][remove]") {
+    SECTION("Remove existing values") {
+        RoaringBitmap rb{1, 2, 3, 4, 5};
+        REQUIRE(rb.size() == 5);
+
+        rb.remove(3);
+        REQUIRE(rb.size() == 4);
+        REQUIRE(!rb.contains(3));
+        REQUIRE(rb.contains(1));
+        REQUIRE(rb.contains(2));
+        REQUIRE(rb.contains(4));
+        REQUIRE(rb.contains(5));
+    }
+
+    SECTION("Remove non-existing values") {
+        RoaringBitmap rb{1, 2, 3};
+        rb.remove(100);  // Doesn't exist
+        REQUIRE(rb.size() == 3);
+    }
+
+    SECTION("Remove all values") {
+        RoaringBitmap rb{1, 2, 3};
+        rb.remove(1);
+        rb.remove(2);
+        rb.remove(3);
+        REQUIRE(rb.empty());
+        REQUIRE(rb.size() == 0);
+    }
+}
+
+TEST_CASE("RoaringBitmap - Iteration", "[roaring][iteration]") {
+    SECTION("Iterate over empty bitmap") {
+        RoaringBitmap rb;
+        size_t count = 0;
+        for (auto it = rb.begin(); it != rb.end(); ++it) {
+            ++count;
+        }
+        REQUIRE(count == 0);
+    }
+
+    SECTION("Iterate over small set") {
+        RoaringBitmap rb{10, 20, 30, 40, 50};
+        std::vector<uint32_t> result;
+        for (uint32_t v : rb) {
+            result.push_back(v);
+        }
+        REQUIRE(result == std::vector<uint32_t>{10, 20, 30, 40, 50});
+    }
+
+    SECTION("Iterate over values in multiple chunks") {
+        RoaringBitmap rb{0, 65536, 65537, 131072};
+        std::vector<uint32_t> result;
+        for (uint32_t v : rb) {
+            result.push_back(v);
+        }
+        REQUIRE(result == std::vector<uint32_t>{0, 65536, 65537, 131072});
+    }
+
+    SECTION("Iterate over consecutive values") {
+        RoaringBitmap rb;
+        for (uint32_t i = 100; i < 200; ++i) {
+            rb.insert(i);
+        }
+        rb.optimize();  // May use run encoding
+
+        std::vector<uint32_t> result;
+        for (uint32_t v : rb) {
+            result.push_back(v);
+        }
+
+        REQUIRE(result.size() == 100);
+        for (uint32_t i = 0; i < 100; ++i) {
+            REQUIRE(result[i] == 100 + i);
+        }
+    }
+}
+
+TEST_CASE("RoaringBitmap - Set Operations", "[roaring][setops]") {
+    SECTION("Union of disjoint sets") {
+        RoaringBitmap a{1, 2, 3};
+        RoaringBitmap b{4, 5, 6};
+        RoaringBitmap c = a | b;
+
+        REQUIRE(c.size() == 6);
+        for (uint32_t v : {1, 2, 3, 4, 5, 6}) {
+            REQUIRE(c.contains(v));
+        }
+    }
+
+    SECTION("Union of overlapping sets") {
+        RoaringBitmap a{1, 2, 3, 4};
+        RoaringBitmap b{3, 4, 5, 6};
+        RoaringBitmap c = a.union_with(b);
+
+        REQUIRE(c.size() == 6);
+        for (uint32_t v : {1, 2, 3, 4, 5, 6}) {
+            REQUIRE(c.contains(v));
+        }
+    }
+
+    SECTION("Intersection") {
+        RoaringBitmap a{1, 2, 3, 4, 5};
+        RoaringBitmap b{3, 4, 5, 6, 7};
+        RoaringBitmap c = a & b;
+
+        REQUIRE(c.size() == 3);
+        REQUIRE(c.contains(3));
+        REQUIRE(c.contains(4));
+        REQUIRE(c.contains(5));
+        REQUIRE(!c.contains(1));
+        REQUIRE(!c.contains(2));
+        REQUIRE(!c.contains(6));
+        REQUIRE(!c.contains(7));
+    }
+
+    SECTION("Intersection of disjoint sets") {
+        RoaringBitmap a{1, 2, 3};
+        RoaringBitmap b{4, 5, 6};
+        RoaringBitmap c = a.intersect_with(b);
+
+        REQUIRE(c.empty());
+    }
+
+    SECTION("Difference") {
+        RoaringBitmap a{1, 2, 3, 4, 5};
+        RoaringBitmap b{3, 4, 5, 6, 7};
+        RoaringBitmap c = a - b;
+
+        REQUIRE(c.size() == 2);
+        REQUIRE(c.contains(1));
+        REQUIRE(c.contains(2));
+        REQUIRE(!c.contains(3));
+        REQUIRE(!c.contains(4));
+        REQUIRE(!c.contains(5));
+    }
+
+    SECTION("Set operations across chunks") {
+        RoaringBitmap a{0, 1, 65536, 65537};
+        RoaringBitmap b{1, 2, 65537, 65538};
+
+        RoaringBitmap u = a | b;
+        REQUIRE(u.size() == 6);
+
+        RoaringBitmap i = a & b;
+        REQUIRE(i.size() == 2);
+        REQUIRE(i.contains(1));
+        REQUIRE(i.contains(65537));
+
+        RoaringBitmap d = a - b;
+        REQUIRE(d.size() == 2);
+        REQUIRE(d.contains(0));
+        REQUIRE(d.contains(65536));
+    }
+}
+
+TEST_CASE("RoaringBitmap - Container Type Conversion", "[roaring][containers]") {
+    SECTION("Array container for small sets") {
+        RoaringBitmap rb;
+        for (uint32_t i = 0; i < 100; ++i) {
+            rb.insert(i * 100);  // Sparse values
+        }
+
+        auto stats = rb.stats();
+        REQUIRE(stats.num_chunks == 1);
+        REQUIRE(stats.num_array_chunks == 1);
+        REQUIRE(stats.num_bitmap_chunks == 0);
+        REQUIRE(stats.total_cardinality == 100);
+    }
+
+    SECTION("Bitmap container for dense sets") {
+        RoaringBitmap rb;
+        // Insert more than 4096 values in same chunk -> triggers bitmap
+        for (uint32_t i = 0; i < 5000; ++i) {
+            rb.insert(i);
+        }
+
+        auto stats = rb.stats();
+        REQUIRE(stats.num_chunks == 1);
+        REQUIRE(stats.num_bitmap_chunks == 1);
+        REQUIRE(stats.num_array_chunks == 0);
+        REQUIRE(stats.total_cardinality == 5000);
+    }
+
+    SECTION("Run container for consecutive values") {
+        RoaringBitmap rb;
+        // Insert consecutive values
+        for (uint32_t i = 0; i < 100; ++i) {
+            rb.insert(i);
+        }
+        rb.optimize();
+
+        auto stats = rb.stats();
+        REQUIRE(stats.num_chunks == 1);
+        // Should use run encoding (1 run vs 100 array elements)
+        REQUIRE(stats.num_run_chunks == 1);
+        REQUIRE(stats.total_cardinality == 100);
+    }
+
+    SECTION("Multiple runs") {
+        RoaringBitmap rb;
+        // Create multiple disjoint runs
+        for (uint32_t i = 0; i < 50; ++i) rb.insert(i);
+        for (uint32_t i = 100; i < 150; ++i) rb.insert(i);
+        for (uint32_t i = 200; i < 250; ++i) rb.insert(i);
+        rb.optimize();
+
+        auto stats = rb.stats();
+        REQUIRE(stats.total_cardinality == 150);
+        // 3 runs * 4 bytes = 12 bytes < 150 elements * 2 bytes = 300 bytes
+        REQUIRE(stats.num_run_chunks == 1);
+    }
+}
+
+TEST_CASE("RoaringBitmap - Serialization", "[roaring][serialization]") {
+    SECTION("Round-trip empty bitmap") {
+        RoaringBitmap original;
+
+        uint8_t buffer[1024] = {};
+        pfc::BitWriter writer(buffer);
+        RoaringBitmap::encode(original, writer);
+        writer.align();
+
+        pfc::BitReader reader(buffer);
+        auto decoded = RoaringBitmap::decode(reader);
+
+        REQUIRE(decoded.empty());
+    }
+
+    SECTION("Round-trip small set") {
+        RoaringBitmap original{1, 5, 10, 100, 1000, 10000};
+
+        uint8_t buffer[1024] = {};
+        pfc::BitWriter writer(buffer);
+        RoaringBitmap::encode(original, writer);
+        writer.align();
+
+        pfc::BitReader reader(buffer);
+        auto decoded = RoaringBitmap::decode(reader);
+
+        REQUIRE(decoded.size() == original.size());
+        for (uint32_t v : original) {
+            REQUIRE(decoded.contains(v));
+        }
+    }
+
+    SECTION("Round-trip large set") {
+        RoaringBitmap original;
+        std::mt19937 gen(42);
+        std::uniform_int_distribution<uint32_t> dist(0, 1000000);
+
+        for (int i = 0; i < 10000; ++i) {
+            original.insert(dist(gen));
+        }
+        original.optimize();
+
+        std::vector<uint8_t> buffer(1024 * 1024);  // 1MB buffer
+        pfc::BitWriter writer(buffer);
+        RoaringBitmap::encode(original, writer);
+        writer.align();
+
+        pfc::BitReader reader(buffer);
+        auto decoded = RoaringBitmap::decode(reader);
+
+        REQUIRE(decoded.size() == original.size());
+        for (uint32_t v : original) {
+            REQUIRE(decoded.contains(v));
+        }
+    }
+
+    SECTION("Round-trip with different container types") {
+        RoaringBitmap original;
+
+        // Array container
+        for (uint32_t i = 0; i < 100; ++i) {
+            original.insert(i * 1000);
+        }
+
+        // Bitmap container (different chunk)
+        for (uint32_t i = 65536; i < 65536 + 5000; ++i) {
+            original.insert(i);
+        }
+
+        // Run container (different chunk)
+        for (uint32_t i = 131072; i < 131072 + 100; ++i) {
+            original.insert(i);
+        }
+        original.optimize();
+
+        auto stats = original.stats();
+        // Verify we have mixed container types
+        REQUIRE(stats.num_array_chunks >= 1);
+
+        std::vector<uint8_t> buffer(1024 * 1024);
+        pfc::BitWriter writer(buffer);
+        RoaringBitmap::encode(original, writer);
+        writer.align();
+
+        pfc::BitReader reader(buffer);
+        auto decoded = RoaringBitmap::decode(reader);
+
+        REQUIRE(decoded.size() == original.size());
+        for (uint32_t v : original) {
+            REQUIRE(decoded.contains(v));
+        }
+    }
+}
+
+TEST_CASE("RoaringBitmap - Edge Cases", "[roaring][edge]") {
+    SECTION("Maximum value") {
+        RoaringBitmap rb;
+        rb.insert(0xFFFFFFFF);
+        REQUIRE(rb.contains(0xFFFFFFFF));
+        REQUIRE(rb.size() == 1);
+    }
+
+    SECTION("Minimum value") {
+        RoaringBitmap rb;
+        rb.insert(0);
+        REQUIRE(rb.contains(0));
+        REQUIRE(rb.size() == 1);
+    }
+
+    SECTION("Values at chunk boundaries") {
+        RoaringBitmap rb;
+        rb.insert(65535);   // Last value in chunk 0
+        rb.insert(65536);   // First value in chunk 1
+        rb.insert(131071);  // Last value in chunk 1
+        rb.insert(131072);  // First value in chunk 2
+
+        REQUIRE(rb.size() == 4);
+        REQUIRE(rb.contains(65535));
+        REQUIRE(rb.contains(65536));
+        REQUIRE(rb.contains(131071));
+        REQUIRE(rb.contains(131072));
+    }
+
+    SECTION("Clear and reuse") {
+        RoaringBitmap rb{1, 2, 3, 4, 5};
+        REQUIRE(rb.size() == 5);
+
+        rb.clear();
+        REQUIRE(rb.empty());
+
+        rb.insert(10);
+        rb.insert(20);
+        REQUIRE(rb.size() == 2);
+        REQUIRE(rb.contains(10));
+        REQUIRE(rb.contains(20));
+        REQUIRE(!rb.contains(1));
+    }
+}
+
+TEST_CASE("RoaringBitmap - Random Operations", "[roaring][random]") {
+    std::mt19937 gen(12345);
+    std::uniform_int_distribution<uint32_t> dist(0, 100000);
+
+    SECTION("Random inserts and contains") {
+        RoaringBitmap rb;
+        std::set<uint32_t> reference;
+
+        for (int i = 0; i < 10000; ++i) {
+            uint32_t v = dist(gen);
+            rb.insert(v);
+            reference.insert(v);
+        }
+
+        REQUIRE(rb.size() == reference.size());
+
+        for (uint32_t v : reference) {
+            REQUIRE(rb.contains(v));
+        }
+
+        // Check some values not in the set
+        for (int i = 0; i < 1000; ++i) {
+            uint32_t v = dist(gen);
+            REQUIRE(rb.contains(v) == (reference.count(v) > 0));
+        }
+    }
+
+    SECTION("Random set operations") {
+        RoaringBitmap a, b;
+        std::set<uint32_t> ref_a, ref_b;
+
+        for (int i = 0; i < 5000; ++i) {
+            uint32_t va = dist(gen);
+            uint32_t vb = dist(gen);
+            a.insert(va);
+            b.insert(vb);
+            ref_a.insert(va);
+            ref_b.insert(vb);
+        }
+
+        // Test union
+        RoaringBitmap u = a | b;
+        std::set<uint32_t> ref_u;
+        std::set_union(ref_a.begin(), ref_a.end(),
+                       ref_b.begin(), ref_b.end(),
+                       std::inserter(ref_u, ref_u.begin()));
+        REQUIRE(u.size() == ref_u.size());
+
+        // Test intersection
+        RoaringBitmap i = a & b;
+        std::set<uint32_t> ref_i;
+        std::set_intersection(ref_a.begin(), ref_a.end(),
+                              ref_b.begin(), ref_b.end(),
+                              std::inserter(ref_i, ref_i.begin()));
+        REQUIRE(i.size() == ref_i.size());
+
+        // Test difference
+        RoaringBitmap d = a - b;
+        std::set<uint32_t> ref_d;
+        std::set_difference(ref_a.begin(), ref_a.end(),
+                            ref_b.begin(), ref_b.end(),
+                            std::inserter(ref_d, ref_d.begin()));
+        REQUIRE(d.size() == ref_d.size());
+    }
+}

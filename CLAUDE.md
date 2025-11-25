@@ -6,229 +6,134 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 PFC (Prefix-Free Codecs) is a header-only C++20 library implementing zero-copy, prefix-free data representations with full algebraic type support and STL integration. The library follows Alex Stepanov's generic programming principles.
 
+**Key invariant**: In-memory representation equals wire format (no marshaling).
+
 ## Commands
 
-### Building the Project
+### Building
 ```bash
-# Configure and build
 mkdir -p build && cd build
 cmake .. -DCMAKE_CXX_STANDARD=20
 cmake --build . -j4
-
-# Build with misc examples
-cmake .. -DBUILD_MISC_EXAMPLES=ON
-
-# Run all tests
-./pfc_tests                 # Core tests (codecs, packed values, basic algorithms)
-./test_advanced             # Advanced features (algebraic types, STL integration)
-./test_production           # Production features (error handling, allocators, Huffman, LZ77, CRC)
-./test_stream_arithmetic    # Stream I/O and arithmetic coding
-
-# Or use CTest
-ctest                       # Run all tests
-ctest -R pfc_tests         # Run specific test
-
-# Run examples
-./tutorial            # Basic usage tutorial
-./advanced_demo       # Advanced features demo
-./mini_demo          # Minimal demonstration
 ```
 
-### Development Commands
+### Running Tests
 ```bash
-# Run specific test sections using Catch2 tags
-./pfc_tests "[codecs]"              # Test all codecs
-./pfc_tests "[core]"                # Test bit I/O
-./test_advanced "[algebraic]"       # Test algebraic types
-./test_advanced "[stl]"             # Test STL integration
-./test_production "[huffman]"       # Test Huffman coding
-./test_stream_arithmetic "[stream]" # Test stream I/O
+# All tests via CTest
+ctest
 
-# List available test cases
+# Individual test executables
+./pfc_tests                 # Core: codecs, packed values, bit I/O
+./test_advanced             # Algebraic types, STL integration
+./test_production           # Huffman, LZ77, error handling, allocators
+./test_stream_arithmetic    # Stream I/O, arithmetic coding
+./test_crc                  # CRC checksums
+./test_new_codecs           # VByte, ExpGolomb, EliasOmega
+./test_succinct             # SuccinctBitVector with rank/select
+
+# Run specific test sections (Catch2 tags)
+./pfc_tests "[codecs]"
+./pfc_tests "[core]"
+./test_advanced "[algebraic]"
+./test_advanced "[stl]"
+
+# List available tests
 ./pfc_tests --list-tests
-./test_advanced --list-tags
-
-# Clean build
-cd build && make clean
-
-# Full rebuild
-rm -rf build && mkdir build && cd build && cmake .. && cmake --build . -j4
+./pfc_tests --list-tags
 ```
 
-## Architecture Overview
-
-### Library Structure
-```
-include/pfc/
-├── core.hpp              # Bit I/O (BitReader/BitWriter), concepts, fundamental abstractions
-├── codecs.hpp            # Universal integer codes (Elias, Fibonacci, Rice, Unary, Fixed)
-├── numeric_codecs.hpp    # Floating point, rational, complex, fixed decimal
-├── packed.hpp            # Core packed value types and containers
-├── algebraic.hpp         # Algebraic types (Sum, Product, Maybe, Either, Result)
-├── stl_integration.hpp   # STL-compatible containers, iterators, and algorithms
-├── coordinates.hpp       # Vectors, matrices, affine transformations
-├── algorithms.hpp        # Generic algorithms for packed data
-├── error_handling.hpp    # Error handling with Result types and exceptions
-├── allocator_support.hpp # Custom allocator support for containers
-├── huffman.hpp           # Huffman coding with static/dynamic tables
-├── lz77.hpp              # LZ77 compression algorithm
-├── crc.hpp               # CRC checksums (CRC32, etc.)
-├── stream_io.hpp         # Stream-based I/O for serialization
-├── arithmetic_coding.hpp # Arithmetic coding for near-optimal compression
-└── pfc.hpp              # Main header (includes everything + high-level API)
+### Examples
+```bash
+./tutorial          # Basic usage
+./advanced_demo     # Advanced features (may have infinite loops - use with caution)
+./new_codecs_demo   # New codec demonstrations
 ```
 
-### Key Design Principles
+## Architecture
 
-1. **Zero-Copy Invariant**: In-memory representation equals wire format
-2. **Prefix-Free Codes**: Self-delimiting, no external metadata needed
-3. **Compile-Time Composition**: Templates and concepts, no virtual dispatch
-4. **Regular Types**: All types satisfy Stepanov's regular type requirements
-5. **Orthogonal Design**: Codecs, containers, and algorithms are independent
+### Core Concepts (core.hpp)
 
-### Core Concepts
+The library is built on three foundational concepts:
 
 ```cpp
-// Bit I/O
 template<typename T>
-concept BitSink = /* can write bits */;
+concept BitSink = /* can write bits: write(bool), write_bits(value, count) */;
 
 template<typename T>
-concept BitSource = /* can read bits */;
+concept BitSource = /* can read bits: read(), read_bits(count) */;
 
-// Codecs
 template<typename C, typename T>
-concept Codec = /* transforms T to/from bits */;
-
-// Packed Values
-template<typename T>
-concept PackedValue = /* has encode/decode static methods */;
+concept Codec = /* transforms T to/from bits via encode/decode static methods */;
 ```
 
-### High-Level API (pfc.hpp)
+### Codec Pattern
 
-The `pfc.hpp` header provides a simple compression API and utility functions:
-
+All codecs follow this structure:
 ```cpp
-// Simple compression/decompression
-auto compressed = compress<EliasGamma>(data);              // Compress vector
-auto decompressed = decompress<uint32_t, EliasGamma>(compressed);  // Decompress
-
-// Data analysis utilities
-double entropy = calculate_entropy(data);                   // Calculate Shannon entropy
-const char* codec = suggest_codec(sample);                  // Suggest best codec based on data
-
-// Common type aliases available in pfc namespace
-using U32 = PackedU32<EliasGamma>;
-using U64 = PackedU64<EliasGamma>;
-using I32 = PackedI32<SignedGamma>;
-using I64 = PackedI64<SignedGamma>;
-```
-
-## Common Development Tasks
-
-### Adding a New Codec
-```cpp
-// In include/pfc/codecs.hpp or numeric_codecs.hpp
-struct MyNewCodec {
+struct SomeCodec {
     static constexpr bool is_fixed_size() { return /* true/false */; }
     static constexpr size_t max_encoded_bits() { return /* max bits */; }
 
     template<BitSink S>
-    static void encode(ValueType v, S& sink) {
-        // Encoding logic
-    }
+    static void encode(ValueType v, S& sink);
 
     template<BitSource S>
-    static ValueType decode(S& source) {
-        // Decoding logic
-    }
+    static ValueType decode(S& source);
 };
 ```
 
-### Adding Tests
-```cpp
-// In tests/test_unified.cpp or test_advanced.cpp
-TEST_CASE("MyNewCodec", "[codecs]") {
-    SECTION("Round-trip") {
-        uint8_t buffer[64] = {};
-        BitWriter writer(buffer);
-        MyNewCodec::encode(test_value, writer);
-        writer.align();
+### Library Structure
 
-        BitReader reader(buffer);
-        auto decoded = MyNewCodec::decode(reader);
-        REQUIRE(decoded == test_value);
-    }
-}
+| Header | Purpose |
+|--------|---------|
+| `core.hpp` | BitReader/BitWriter, concepts |
+| `codecs.hpp` | Universal codes: Elias, Fibonacci, Rice, VByte, ExpGolomb |
+| `numeric_codecs.hpp` | Floating point, rational, complex, fixed decimal |
+| `packed.hpp` | Packed value types and containers |
+| `algebraic.hpp` | Sum, Product, Maybe, Either, Result types |
+| `stl_integration.hpp` | STL-compatible containers, iterators, algorithms |
+| `succinct.hpp` | SuccinctBitVector with O(1) rank/select |
+| `huffman.hpp` | Huffman coding |
+| `lz77.hpp` | LZ77 compression |
+| `arithmetic_coding.hpp` | Arithmetic coding (production), range coding (experimental) |
+| `crc.hpp` | CRC8, CRC16, CRC32 checksums |
+| `pfc.hpp` | Main header - includes everything |
+
+### Type Composition
+
+Packed types compose via templates:
+```cpp
+using OptionalInt = PackedOptional<PackedInt>;
+using EitherIntString = PackedEither<PackedInt, PackedString>;
+using IntList = PackedVector<PackedRational>;
 ```
 
-### Creating Algebraic Types
-```cpp
-// Compose existing types
-using MyOptional = PackedOptional<PackedInt>;
-using MyEither = PackedEither<PackedInt, PackedString>;
-using MyList = PackedVector<PackedRational>;
-```
+## Test Organization
 
-## Testing Strategy
+Tests use Catch2 with sections and tags:
 
-The test suite uses Catch2 framework with organized sections:
+- `test_unified.cpp` → `pfc_tests` - Core functionality, all codecs
+- `test_advanced.cpp` → `test_advanced` - Algebraic types, STL integration
+- `test_production.cpp` → `test_production` - Huffman, LZ77, error handling
+- `test_stream_arithmetic.cpp` → `test_stream_arithmetic` - Stream I/O, arithmetic coding
+- `test_crc.cpp` → `test_crc` - CRC checksums
+- `test_new_codecs.cpp` → `test_new_codecs` - VByte, ExpGolomb, EliasOmega
+- `test_succinct.cpp` → `test_succinct` - SuccinctBitVector (3167 assertions)
 
-- **test_unified.cpp**: Core functionality
-  - Bit I/O operations (BitReader/BitWriter)
-  - All codec implementations (Elias, Fibonacci, Rice, Fixed, etc.)
-  - Packed values and containers
-  - Basic algorithms
-
-- **test_advanced.cpp**: Advanced features
-  - Algebraic types (PackedOptional, PackedEither, PackedVariant)
-  - STL integration (containers, iterators, algorithms)
-  - Coordinate systems (vectors, matrices, transformations)
-
-- **test_production.cpp**: Production-ready features
-  - Error handling and Result types
-  - Custom allocator support
-  - Huffman coding
-  - LZ77 compression
-  - CRC checksums
-
-- **test_stream_arithmetic.cpp**: Advanced compression
-  - Stream-based I/O
-  - Arithmetic coding
-
-Focus on round-trip correctness, edge cases, and random test data. Use Catch2 sections and tags for organization.
-
-## Performance Considerations
-
-1. **Proxy Iterators**: Decode on access, never store decoded values
-2. **Type Erasure**: Optional, only when runtime polymorphism needed
-3. **Parallel Algorithms**: Use execution policies when available
-4. **Memory Layout**: Bit-packed, minimal padding only at container end
-
-## Integration with Related Libraries
-
-### packed_data library
-Located at `/home/spinoza/github/repos/packed_data/`
-- More comprehensive container abstractions
-- Variable-length arrays with O(1) access
-- Bit matrix implementations
-
-### universal_coders library
-Located at `/home/spinoza/github/repos/universal_coders/`
-- Additional universal coding schemes
-- Experimental codecs
+Current status: 86% pass rate (6/7 suites), 3477+ assertions passing.
 
 ## Known Issues
 
-1. Some advanced tests have precision issues with floating point comparisons
-2. The advanced_demo may have infinite loops in certain sections - use with caution
-3. Arithmetic coding and stream I/O are experimental and may need additional validation
+1. **Range coding** (arithmetic_coding.hpp): Works only for short sequences (2-3 bytes). Use arithmetic coding instead, which is fully functional.
 
-## Code Style Guidelines
+2. **advanced_demo**: May have infinite loops in certain sections.
 
-1. Use concepts for all template requirements
-2. Prefer static polymorphism over virtual functions
-3. Follow STL naming conventions
-4. Keep headers self-contained
-5. Maintain zero-copy invariant in all operations
+3. **Floating point precision**: Some edge cases with very small/large values.
+
+## Design Principles
+
+1. **Zero-copy**: Wire format = memory format
+2. **Prefix-free**: Self-delimiting codes, no length headers needed
+3. **Compile-time composition**: Templates and concepts, no virtual dispatch
+4. **Regular types**: All types are copyable, assignable, comparable (Stepanov's requirements)
+5. **Orthogonal design**: Codecs, containers, and algorithms are independent

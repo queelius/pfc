@@ -368,6 +368,777 @@ public:
     }
 };
 
+// ============================================================
+//  Roaring Bitmap - Compressed integer sets
+//  Efficient storage with automatic container selection
+// ============================================================
+
+class RoaringBitmap {
+public:
+    using value_type = uint32_t;
+    using size_type = size_t;
+
+private:
+    // Container types based on cardinality within a chunk
+    enum class ContainerType : uint8_t {
+        Array = 0,   // Sorted uint16_t array (cardinality < 4096)
+        Bitmap = 1,  // 8KB bit vector (cardinality >= 4096)
+        Run = 2      // Run-length encoded (consecutive ranges)
+    };
+
+    // Threshold for switching between array and bitmap
+    static constexpr size_t ARRAY_MAX_SIZE = 4096;
+    static constexpr size_t BITMAP_SIZE = 65536;  // 2^16 bits = 8KB
+    static constexpr size_t WORDS_PER_BITMAP = BITMAP_SIZE / 64;
+
+    // A chunk covers values with the same high 16 bits
+    struct Chunk {
+        uint16_t key;           // High 16 bits of values in this chunk
+        ContainerType type;
+
+        // Container data (only one is active based on type)
+        std::vector<uint16_t> array;   // For Array type
+        std::vector<uint64_t> bitmap;  // For Bitmap type (1024 words = 8KB)
+        std::vector<std::pair<uint16_t, uint16_t>> runs;  // For Run type: (start, length-1)
+
+        Chunk() = default;
+        explicit Chunk(uint16_t k) : key(k), type(ContainerType::Array) {}
+
+        [[nodiscard]] size_t cardinality() const {
+            switch (type) {
+                case ContainerType::Array:
+                    return array.size();
+                case ContainerType::Bitmap: {
+                    size_t count = 0;
+                    for (auto word : bitmap) {
+                        count += __builtin_popcountll(word);
+                    }
+                    return count;
+                }
+                case ContainerType::Run: {
+                    size_t count = 0;
+                    for (const auto& [start, len] : runs) {
+                        count += len + 1;
+                    }
+                    return count;
+                }
+            }
+            return 0;
+        }
+
+        [[nodiscard]] bool contains(uint16_t low) const {
+            switch (type) {
+                case ContainerType::Array: {
+                    // Binary search in sorted array
+                    auto it = std::lower_bound(array.begin(), array.end(), low);
+                    return it != array.end() && *it == low;
+                }
+                case ContainerType::Bitmap: {
+                    size_t word_idx = low / 64;
+                    size_t bit_idx = low % 64;
+                    return (bitmap[word_idx] >> bit_idx) & 1;
+                }
+                case ContainerType::Run: {
+                    // Binary search for run containing low
+                    for (const auto& [start, len] : runs) {
+                        if (low >= start && low <= start + len) return true;
+                        if (start > low) break;
+                    }
+                    return false;
+                }
+            }
+            return false;
+        }
+
+        void insert(uint16_t low) {
+            switch (type) {
+                case ContainerType::Array: {
+                    auto it = std::lower_bound(array.begin(), array.end(), low);
+                    if (it == array.end() || *it != low) {
+                        array.insert(it, low);
+                        // Convert to bitmap if too large
+                        if (array.size() > ARRAY_MAX_SIZE) {
+                            convert_to_bitmap();
+                        }
+                    }
+                    break;
+                }
+                case ContainerType::Bitmap: {
+                    size_t word_idx = low / 64;
+                    size_t bit_idx = low % 64;
+                    bitmap[word_idx] |= (1ULL << bit_idx);
+                    break;
+                }
+                case ContainerType::Run: {
+                    // For simplicity, convert to array, insert, then optimize
+                    convert_to_array();
+                    insert(low);
+                    optimize();
+                    break;
+                }
+            }
+        }
+
+        void remove(uint16_t low) {
+            switch (type) {
+                case ContainerType::Array: {
+                    auto it = std::lower_bound(array.begin(), array.end(), low);
+                    if (it != array.end() && *it == low) {
+                        array.erase(it);
+                    }
+                    break;
+                }
+                case ContainerType::Bitmap: {
+                    size_t word_idx = low / 64;
+                    size_t bit_idx = low % 64;
+                    bitmap[word_idx] &= ~(1ULL << bit_idx);
+                    // Convert back to array if sparse
+                    if (cardinality() <= ARRAY_MAX_SIZE) {
+                        convert_to_array();
+                    }
+                    break;
+                }
+                case ContainerType::Run: {
+                    convert_to_array();
+                    remove(low);
+                    break;
+                }
+            }
+        }
+
+        void convert_to_bitmap() {
+            if (type == ContainerType::Bitmap) return;
+
+            std::vector<uint64_t> new_bitmap(WORDS_PER_BITMAP, 0);
+
+            if (type == ContainerType::Array) {
+                for (uint16_t val : array) {
+                    size_t word_idx = val / 64;
+                    size_t bit_idx = val % 64;
+                    new_bitmap[word_idx] |= (1ULL << bit_idx);
+                }
+                array.clear();
+                array.shrink_to_fit();
+            } else if (type == ContainerType::Run) {
+                for (const auto& [start, len] : runs) {
+                    for (uint32_t v = start; v <= static_cast<uint32_t>(start) + len; ++v) {
+                        size_t word_idx = v / 64;
+                        size_t bit_idx = v % 64;
+                        new_bitmap[word_idx] |= (1ULL << bit_idx);
+                    }
+                }
+                runs.clear();
+                runs.shrink_to_fit();
+            }
+
+            bitmap = std::move(new_bitmap);
+            type = ContainerType::Bitmap;
+        }
+
+        void convert_to_array() {
+            if (type == ContainerType::Array) return;
+
+            std::vector<uint16_t> new_array;
+
+            if (type == ContainerType::Bitmap) {
+                new_array.reserve(cardinality());
+                for (size_t w = 0; w < WORDS_PER_BITMAP; ++w) {
+                    uint64_t word = bitmap[w];
+                    while (word) {
+                        size_t bit = __builtin_ctzll(word);
+                        new_array.push_back(static_cast<uint16_t>(w * 64 + bit));
+                        word &= word - 1;  // Clear lowest set bit
+                    }
+                }
+                bitmap.clear();
+                bitmap.shrink_to_fit();
+            } else if (type == ContainerType::Run) {
+                for (const auto& [start, len] : runs) {
+                    for (uint32_t v = start; v <= static_cast<uint32_t>(start) + len; ++v) {
+                        new_array.push_back(static_cast<uint16_t>(v));
+                    }
+                }
+                runs.clear();
+                runs.shrink_to_fit();
+            }
+
+            array = std::move(new_array);
+            type = ContainerType::Array;
+        }
+
+        // Optimize container representation
+        void optimize() {
+            size_t card = cardinality();
+
+            // Check if run encoding would be more efficient
+            if (type == ContainerType::Array || type == ContainerType::Bitmap) {
+                std::vector<std::pair<uint16_t, uint16_t>> potential_runs;
+
+                if (type == ContainerType::Array && !array.empty()) {
+                    uint16_t run_start = array[0];
+                    uint16_t run_len = 0;
+
+                    for (size_t i = 1; i < array.size(); ++i) {
+                        if (array[i] == array[i-1] + 1) {
+                            ++run_len;
+                        } else {
+                            potential_runs.emplace_back(run_start, run_len);
+                            run_start = array[i];
+                            run_len = 0;
+                        }
+                    }
+                    potential_runs.emplace_back(run_start, run_len);
+
+                    // Run encoding uses 4 bytes per run
+                    // Array uses 2 bytes per element
+                    // Bitmap uses 8KB fixed
+                    size_t run_bytes = potential_runs.size() * 4;
+                    size_t array_bytes = array.size() * 2;
+
+                    if (run_bytes < array_bytes && run_bytes < 8192) {
+                        runs = std::move(potential_runs);
+                        array.clear();
+                        array.shrink_to_fit();
+                        type = ContainerType::Run;
+                    }
+                }
+            }
+
+            // Convert bitmap to array if sparse enough
+            if (type == ContainerType::Bitmap && card <= ARRAY_MAX_SIZE) {
+                convert_to_array();
+            }
+        }
+    };
+
+    std::vector<Chunk> chunks_;  // Sorted by key
+
+    // Find or create chunk for given high 16 bits
+    Chunk* find_or_create_chunk(uint16_t key) {
+        auto it = std::lower_bound(chunks_.begin(), chunks_.end(), key,
+            [](const Chunk& c, uint16_t k) { return c.key < k; });
+
+        if (it != chunks_.end() && it->key == key) {
+            return &(*it);
+        }
+
+        it = chunks_.insert(it, Chunk(key));
+        return &(*it);
+    }
+
+    const Chunk* find_chunk(uint16_t key) const {
+        auto it = std::lower_bound(chunks_.begin(), chunks_.end(), key,
+            [](const Chunk& c, uint16_t k) { return c.key < k; });
+
+        if (it != chunks_.end() && it->key == key) {
+            return &(*it);
+        }
+        return nullptr;
+    }
+
+public:
+    RoaringBitmap() = default;
+
+    // Construct from initializer list
+    RoaringBitmap(std::initializer_list<uint32_t> values) {
+        for (uint32_t v : values) {
+            insert(v);
+        }
+        optimize();
+    }
+
+    // Construct from range
+    template<typename Iterator>
+    RoaringBitmap(Iterator begin, Iterator end) {
+        for (auto it = begin; it != end; ++it) {
+            insert(*it);
+        }
+        optimize();
+    }
+
+    // ==================== Core Operations ====================
+
+    [[nodiscard]] bool contains(uint32_t x) const {
+        uint16_t high = static_cast<uint16_t>(x >> 16);
+        uint16_t low = static_cast<uint16_t>(x & 0xFFFF);
+
+        const Chunk* chunk = find_chunk(high);
+        return chunk && chunk->contains(low);
+    }
+
+    void insert(uint32_t x) {
+        uint16_t high = static_cast<uint16_t>(x >> 16);
+        uint16_t low = static_cast<uint16_t>(x & 0xFFFF);
+
+        Chunk* chunk = find_or_create_chunk(high);
+        chunk->insert(low);
+    }
+
+    void remove(uint32_t x) {
+        uint16_t high = static_cast<uint16_t>(x >> 16);
+        uint16_t low = static_cast<uint16_t>(x & 0xFFFF);
+
+        auto it = std::lower_bound(chunks_.begin(), chunks_.end(), high,
+            [](const Chunk& c, uint16_t k) { return c.key < k; });
+
+        if (it != chunks_.end() && it->key == high) {
+            it->remove(low);
+            // Remove empty chunks
+            if (it->cardinality() == 0) {
+                chunks_.erase(it);
+            }
+        }
+    }
+
+    // ==================== Size and Iteration ====================
+
+    [[nodiscard]] size_t cardinality() const {
+        size_t count = 0;
+        for (const auto& chunk : chunks_) {
+            count += chunk.cardinality();
+        }
+        return count;
+    }
+
+    [[nodiscard]] size_t size() const { return cardinality(); }
+
+    [[nodiscard]] bool empty() const {
+        return chunks_.empty();
+    }
+
+    void clear() {
+        chunks_.clear();
+    }
+
+    // Optimize all chunks
+    void optimize() {
+        for (auto& chunk : chunks_) {
+            chunk.optimize();
+        }
+    }
+
+    // ==================== Iterator ====================
+
+    class iterator {
+    public:
+        using iterator_category = std::forward_iterator_tag;
+        using value_type = uint32_t;
+        using difference_type = std::ptrdiff_t;
+        using pointer = const uint32_t*;
+        using reference = uint32_t;
+
+    private:
+        const RoaringBitmap* rb_;
+        size_t chunk_idx_;
+        size_t pos_in_chunk_;
+        uint32_t current_value_;
+        bool at_end_;
+
+        void advance_to_next() {
+            while (chunk_idx_ < rb_->chunks_.size()) {
+                const Chunk& chunk = rb_->chunks_[chunk_idx_];
+                uint32_t high = static_cast<uint32_t>(chunk.key) << 16;
+
+                switch (chunk.type) {
+                    case ContainerType::Array:
+                        if (pos_in_chunk_ < chunk.array.size()) {
+                            current_value_ = high | chunk.array[pos_in_chunk_];
+                            return;
+                        }
+                        break;
+                    case ContainerType::Bitmap:
+                        while (pos_in_chunk_ < BITMAP_SIZE) {
+                            size_t word_idx = pos_in_chunk_ / 64;
+                            size_t bit_idx = pos_in_chunk_ % 64;
+                            if ((chunk.bitmap[word_idx] >> bit_idx) & 1) {
+                                current_value_ = high | static_cast<uint16_t>(pos_in_chunk_);
+                                return;
+                            }
+                            ++pos_in_chunk_;
+                        }
+                        break;
+                    case ContainerType::Run:
+                        // pos_in_chunk_ encodes: high bits = run index, low bits = offset in run
+                        if (!chunk.runs.empty()) {
+                            size_t run_idx = pos_in_chunk_ >> 16;
+                            size_t offset = pos_in_chunk_ & 0xFFFF;
+
+                            while (run_idx < chunk.runs.size()) {
+                                const auto& [start, len] = chunk.runs[run_idx];
+                                if (offset <= len) {
+                                    current_value_ = high | static_cast<uint16_t>(start + offset);
+                                    return;
+                                }
+                                ++run_idx;
+                                offset = 0;
+                                pos_in_chunk_ = (run_idx << 16);
+                            }
+                        }
+                        break;
+                }
+
+                ++chunk_idx_;
+                pos_in_chunk_ = 0;
+            }
+            at_end_ = true;
+        }
+
+    public:
+        iterator() : rb_(nullptr), chunk_idx_(0), pos_in_chunk_(0), current_value_(0), at_end_(true) {}
+
+        iterator(const RoaringBitmap* rb, bool end = false)
+            : rb_(rb), chunk_idx_(0), pos_in_chunk_(0), current_value_(0), at_end_(end)
+        {
+            if (!end && rb_ && !rb_->chunks_.empty()) {
+                advance_to_next();
+            } else {
+                at_end_ = true;
+            }
+        }
+
+        reference operator*() const { return current_value_; }
+
+        iterator& operator++() {
+            if (at_end_) return *this;
+
+            const Chunk& chunk = rb_->chunks_[chunk_idx_];
+
+            switch (chunk.type) {
+                case ContainerType::Array:
+                    ++pos_in_chunk_;
+                    break;
+                case ContainerType::Bitmap:
+                    ++pos_in_chunk_;
+                    break;
+                case ContainerType::Run: {
+                    size_t run_idx = pos_in_chunk_ >> 16;
+                    size_t offset = pos_in_chunk_ & 0xFFFF;
+                    const auto& [start, len] = chunk.runs[run_idx];
+                    if (offset < len) {
+                        pos_in_chunk_ = (run_idx << 16) | (offset + 1);
+                    } else {
+                        pos_in_chunk_ = ((run_idx + 1) << 16);
+                    }
+                    break;
+                }
+            }
+
+            advance_to_next();
+            return *this;
+        }
+
+        iterator operator++(int) {
+            iterator tmp = *this;
+            ++(*this);
+            return tmp;
+        }
+
+        bool operator==(const iterator& other) const {
+            if (at_end_ && other.at_end_) return true;
+            if (at_end_ || other.at_end_) return false;
+            return rb_ == other.rb_ && chunk_idx_ == other.chunk_idx_ &&
+                   pos_in_chunk_ == other.pos_in_chunk_;
+        }
+
+        bool operator!=(const iterator& other) const {
+            return !(*this == other);
+        }
+    };
+
+    [[nodiscard]] iterator begin() const { return iterator(this, false); }
+    [[nodiscard]] iterator end() const { return iterator(this, true); }
+
+    // ==================== Set Operations ====================
+
+    [[nodiscard]] RoaringBitmap union_with(const RoaringBitmap& other) const {
+        RoaringBitmap result;
+
+        size_t i = 0, j = 0;
+        while (i < chunks_.size() && j < other.chunks_.size()) {
+            if (chunks_[i].key < other.chunks_[j].key) {
+                result.chunks_.push_back(chunks_[i]);
+                ++i;
+            } else if (chunks_[i].key > other.chunks_[j].key) {
+                result.chunks_.push_back(other.chunks_[j]);
+                ++j;
+            } else {
+                // Merge chunks with same key
+                Chunk merged(chunks_[i].key);
+                merged.convert_to_bitmap();
+
+                // Copy from first chunk
+                const Chunk& c1 = chunks_[i];
+                if (c1.type == ContainerType::Bitmap) {
+                    merged.bitmap = c1.bitmap;
+                } else {
+                    Chunk temp = c1;
+                    temp.convert_to_bitmap();
+                    merged.bitmap = std::move(temp.bitmap);
+                }
+
+                // OR with second chunk
+                const Chunk& c2 = other.chunks_[j];
+                if (c2.type == ContainerType::Bitmap) {
+                    for (size_t w = 0; w < WORDS_PER_BITMAP; ++w) {
+                        merged.bitmap[w] |= c2.bitmap[w];
+                    }
+                } else {
+                    Chunk temp = c2;
+                    temp.convert_to_bitmap();
+                    for (size_t w = 0; w < WORDS_PER_BITMAP; ++w) {
+                        merged.bitmap[w] |= temp.bitmap[w];
+                    }
+                }
+
+                merged.optimize();
+                result.chunks_.push_back(std::move(merged));
+                ++i;
+                ++j;
+            }
+        }
+
+        // Add remaining chunks
+        while (i < chunks_.size()) {
+            result.chunks_.push_back(chunks_[i++]);
+        }
+        while (j < other.chunks_.size()) {
+            result.chunks_.push_back(other.chunks_[j++]);
+        }
+
+        return result;
+    }
+
+    [[nodiscard]] RoaringBitmap intersect_with(const RoaringBitmap& other) const {
+        RoaringBitmap result;
+
+        size_t i = 0, j = 0;
+        while (i < chunks_.size() && j < other.chunks_.size()) {
+            if (chunks_[i].key < other.chunks_[j].key) {
+                ++i;
+            } else if (chunks_[i].key > other.chunks_[j].key) {
+                ++j;
+            } else {
+                // Intersect chunks with same key
+                Chunk intersected(chunks_[i].key);
+                intersected.convert_to_bitmap();
+
+                // Copy from first chunk
+                const Chunk& c1 = chunks_[i];
+                if (c1.type == ContainerType::Bitmap) {
+                    intersected.bitmap = c1.bitmap;
+                } else {
+                    Chunk temp = c1;
+                    temp.convert_to_bitmap();
+                    intersected.bitmap = std::move(temp.bitmap);
+                }
+
+                // AND with second chunk
+                const Chunk& c2 = other.chunks_[j];
+                if (c2.type == ContainerType::Bitmap) {
+                    for (size_t w = 0; w < WORDS_PER_BITMAP; ++w) {
+                        intersected.bitmap[w] &= c2.bitmap[w];
+                    }
+                } else {
+                    Chunk temp = c2;
+                    temp.convert_to_bitmap();
+                    for (size_t w = 0; w < WORDS_PER_BITMAP; ++w) {
+                        intersected.bitmap[w] &= temp.bitmap[w];
+                    }
+                }
+
+                if (intersected.cardinality() > 0) {
+                    intersected.optimize();
+                    result.chunks_.push_back(std::move(intersected));
+                }
+                ++i;
+                ++j;
+            }
+        }
+
+        return result;
+    }
+
+    [[nodiscard]] RoaringBitmap difference(const RoaringBitmap& other) const {
+        RoaringBitmap result;
+
+        size_t i = 0, j = 0;
+        while (i < chunks_.size()) {
+            // Skip other chunks with smaller keys
+            while (j < other.chunks_.size() && other.chunks_[j].key < chunks_[i].key) {
+                ++j;
+            }
+
+            if (j >= other.chunks_.size() || other.chunks_[j].key > chunks_[i].key) {
+                // No matching chunk in other, copy entire chunk
+                result.chunks_.push_back(chunks_[i]);
+            } else {
+                // Subtract chunks with same key
+                Chunk diff(chunks_[i].key);
+                diff.convert_to_bitmap();
+
+                const Chunk& c1 = chunks_[i];
+                if (c1.type == ContainerType::Bitmap) {
+                    diff.bitmap = c1.bitmap;
+                } else {
+                    Chunk temp = c1;
+                    temp.convert_to_bitmap();
+                    diff.bitmap = std::move(temp.bitmap);
+                }
+
+                const Chunk& c2 = other.chunks_[j];
+                if (c2.type == ContainerType::Bitmap) {
+                    for (size_t w = 0; w < WORDS_PER_BITMAP; ++w) {
+                        diff.bitmap[w] &= ~c2.bitmap[w];
+                    }
+                } else {
+                    Chunk temp = c2;
+                    temp.convert_to_bitmap();
+                    for (size_t w = 0; w < WORDS_PER_BITMAP; ++w) {
+                        diff.bitmap[w] &= ~temp.bitmap[w];
+                    }
+                }
+
+                if (diff.cardinality() > 0) {
+                    diff.optimize();
+                    result.chunks_.push_back(std::move(diff));
+                }
+                ++j;
+            }
+            ++i;
+        }
+
+        return result;
+    }
+
+    // Operator overloads for set operations
+    RoaringBitmap operator|(const RoaringBitmap& other) const { return union_with(other); }
+    RoaringBitmap operator&(const RoaringBitmap& other) const { return intersect_with(other); }
+    RoaringBitmap operator-(const RoaringBitmap& other) const { return difference(other); }
+
+    // ==================== Serialization ====================
+
+    template<typename Sink>
+    static void encode(const RoaringBitmap& rb, Sink& sink) requires BitSink<Sink> {
+        // Encode number of chunks
+        codecs::EliasGamma::encode(static_cast<uint32_t>(rb.chunks_.size()), sink);
+
+        for (const auto& chunk : rb.chunks_) {
+            // Encode chunk key
+            codecs::Fixed<16>::encode(chunk.key, sink);
+
+            // Encode container type
+            codecs::Fixed<2>::encode(static_cast<uint8_t>(chunk.type), sink);
+
+            switch (chunk.type) {
+                case ContainerType::Array:
+                    codecs::EliasGamma::encode(static_cast<uint32_t>(chunk.array.size()), sink);
+                    for (uint16_t val : chunk.array) {
+                        codecs::Fixed<16>::encode(val, sink);
+                    }
+                    break;
+
+                case ContainerType::Bitmap:
+                    for (uint64_t word : chunk.bitmap) {
+                        codecs::Fixed<64>::encode(word, sink);
+                    }
+                    break;
+
+                case ContainerType::Run:
+                    codecs::EliasGamma::encode(static_cast<uint32_t>(chunk.runs.size()), sink);
+                    for (const auto& [start, len] : chunk.runs) {
+                        codecs::Fixed<16>::encode(start, sink);
+                        codecs::Fixed<16>::encode(len, sink);
+                    }
+                    break;
+            }
+        }
+    }
+
+    template<typename Source>
+    static RoaringBitmap decode(Source& source) requires BitSource<Source> {
+        RoaringBitmap rb;
+
+        uint32_t num_chunks = codecs::EliasGamma::decode<uint32_t>(source);
+        rb.chunks_.reserve(num_chunks);
+
+        for (uint32_t c = 0; c < num_chunks; ++c) {
+            Chunk chunk;
+            chunk.key = codecs::Fixed<16>::decode<uint16_t>(source);
+            chunk.type = static_cast<ContainerType>(codecs::Fixed<2>::decode<uint8_t>(source));
+
+            switch (chunk.type) {
+                case ContainerType::Array: {
+                    uint32_t size = codecs::EliasGamma::decode<uint32_t>(source);
+                    chunk.array.reserve(size);
+                    for (uint32_t i = 0; i < size; ++i) {
+                        chunk.array.push_back(codecs::Fixed<16>::decode<uint16_t>(source));
+                    }
+                    break;
+                }
+
+                case ContainerType::Bitmap:
+                    chunk.bitmap.resize(WORDS_PER_BITMAP);
+                    for (size_t w = 0; w < WORDS_PER_BITMAP; ++w) {
+                        chunk.bitmap[w] = codecs::Fixed<64>::decode<uint64_t>(source);
+                    }
+                    break;
+
+                case ContainerType::Run: {
+                    uint32_t num_runs = codecs::EliasGamma::decode<uint32_t>(source);
+                    chunk.runs.reserve(num_runs);
+                    for (uint32_t i = 0; i < num_runs; ++i) {
+                        uint16_t start = codecs::Fixed<16>::decode<uint16_t>(source);
+                        uint16_t len = codecs::Fixed<16>::decode<uint16_t>(source);
+                        chunk.runs.emplace_back(start, len);
+                    }
+                    break;
+                }
+            }
+
+            rb.chunks_.push_back(std::move(chunk));
+        }
+
+        return rb;
+    }
+
+    // ==================== Statistics ====================
+
+    struct Stats {
+        size_t num_chunks;
+        size_t num_array_chunks;
+        size_t num_bitmap_chunks;
+        size_t num_run_chunks;
+        size_t total_cardinality;
+        size_t memory_bytes;
+    };
+
+    [[nodiscard]] Stats stats() const {
+        Stats s{};
+        s.num_chunks = chunks_.size();
+
+        for (const auto& chunk : chunks_) {
+            s.total_cardinality += chunk.cardinality();
+
+            switch (chunk.type) {
+                case ContainerType::Array:
+                    ++s.num_array_chunks;
+                    s.memory_bytes += sizeof(Chunk) + chunk.array.size() * sizeof(uint16_t);
+                    break;
+                case ContainerType::Bitmap:
+                    ++s.num_bitmap_chunks;
+                    s.memory_bytes += sizeof(Chunk) + chunk.bitmap.size() * sizeof(uint64_t);
+                    break;
+                case ContainerType::Run:
+                    ++s.num_run_chunks;
+                    s.memory_bytes += sizeof(Chunk) + chunk.runs.size() * sizeof(std::pair<uint16_t, uint16_t>);
+                    break;
+            }
+        }
+
+        return s;
+    }
+};
+
 } // namespace pfc::succinct
 
 // Make SuccinctBitVector a PackedValue (must be in std namespace)
