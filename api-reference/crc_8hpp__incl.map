@@ -1,9 +1,0 @@
-<map id="pfc/crc.hpp" name="pfc/crc.hpp">
-<area shape="rect" id="Node000001" title=" " alt="" coords="77,5,171,31"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="5,79,72,104"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="112,33,65,72,61,68,109,29"/>
-<area shape="rect" id="Node000003" title=" " alt="" coords="96,79,152,104"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="127,31,127,65,121,65,121,31"/>
-<area shape="rect" id="Node000004" title=" " alt="" coords="176,79,229,104"/>
-<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="138,29,182,68,178,71,135,33"/>
-</map>
