@@ -1,0 +1,17 @@
+<map id="pfc/error_handling.hpp" name="pfc/error_handling.hpp">
+<area shape="rect" id="Node000001" title=" " alt="" coords="251,5,419,31"/>
+<area shape="rect" id="Node000002" href="$arithmetic__coding_8hpp.html" title=" " alt="" coords="5,79,196,104"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="285,37,139,81,138,76,284,32"/>
+<area shape="rect" id="Node000003" href="$pfc_8hpp.html" title=" " alt="" coords="288,152,383,177"/>
+<area shape="poly" id="edge7_Node000001_Node000003" title=" " alt="" coords="301,40,279,57,262,80,259,90,260,100,271,119,291,136,313,150,310,154,288,141,267,123,255,102,254,90,257,77,275,54,297,36"/>
+<area shape="rect" id="Node000004" href="$huffman_8hpp.html" title=" " alt="" coords="271,79,399,104"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="338,44,338,79,333,79,333,44"/>
+<area shape="rect" id="Node000005" href="$lz77_8hpp.html" title=" " alt="" coords="423,79,525,104"/>
+<area shape="poly" id="edge5_Node000001_Node000005" title=" " alt="" coords="371,34,453,76,450,81,368,39"/>
+<area shape="rect" id="Node000006" href="$stream__io_8hpp.html" title=" " alt="" coords="549,79,687,104"/>
+<area shape="poly" id="edge8_Node000001_Node000006" title=" " alt="" coords="395,31,573,76,572,81,393,37"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="152,105,298,149,297,154,151,110"/>
+<area shape="poly" id="edge4_Node000004_Node000003" title=" " alt="" coords="338,118,338,152,333,152,333,118"/>
+<area shape="poly" id="edge6_Node000005_Node000003" title=" " alt="" coords="441,113,359,154,357,149,438,108"/>
+<area shape="poly" id="edge9_Node000006_Node000003" title=" " alt="" coords="560,110,382,154,380,149,559,105"/>
+</map>

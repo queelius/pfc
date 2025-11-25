@@ -1,0 +1,26 @@
+var searchData=
+[
+  ['back_0',['back',['../classpfc_1_1PackedContainer.html#a0ebd613206abc355fce0cb85bc11be0c',1,'pfc::PackedContainer']]],
+  ['bad_1',['bad',['../classpfc_1_1stream__bit__writer.html#af97dacf181aed250abd844934a214a2d',1,'pfc::stream_bit_writer::bad()'],['../classpfc_1_1stream__bit__reader.html#aa2246a550cb98c56d347e2ff86cbacc0',1,'pfc::stream_bit_reader::bad()']]],
+  ['balanced_2',['balanced',['../structpfc_1_1compression_1_1LZ77Config.html#a953cdc89dc9b7721a4c16de489fab5f0',1,'pfc::compression::LZ77Config']]],
+  ['basicbitreader_3',['basicbitreader',['../classpfc_1_1BasicBitReader.html#add19e498a1783766bee8ac366e74ee87',1,'pfc::BasicBitReader::BasicBitReader(const uint8_t *data, size_t size)'],['../classpfc_1_1BasicBitReader.html#a9606b5b56df082bafbc416fcdb3ac81d',1,'pfc::BasicBitReader::BasicBitReader(const std::vector&lt; uint8_t, Allocator &gt; &amp;buffer)']]],
+  ['basicbitwriter_4',['basicbitwriter',['../classpfc_1_1BasicBitWriter.html#a0737321d1248e5c46d1d29137c0ab82c',1,'pfc::BasicBitWriter::BasicBitWriter(const Allocator &amp;alloc=Allocator())'],['../classpfc_1_1BasicBitWriter.html#ae52fb7bb8536ddc53654ed68d1f208a4',1,'pfc::BasicBitWriter::BasicBitWriter(size_t initial_capacity, const Allocator &amp;alloc=Allocator())']]],
+  ['basicpackedbuffer_5',['BasicPackedBuffer',['../classpfc_1_1BasicPackedBuffer.html#ac8684049f32d889a46d10fcc09c8bcb6',1,'pfc::BasicPackedBuffer']]],
+  ['basicpackedvector_6',['BasicPackedVector',['../classpfc_1_1BasicPackedVector.html#ac8fa904802a50b03fa96656c83299670',1,'pfc::BasicPackedVector']]],
+  ['begin_7',['begin',['../classpfc_1_1PackedVector.html#a303d4d77ff172d176102df24ef7cc6c7',1,'pfc::PackedVector::begin()'],['../classpfc_1_1succinct_1_1RoaringBitmap.html#ad15b6f7f4ba12de62ba1d64eb5edc441',1,'pfc::succinct::RoaringBitmap::begin()'],['../classpfc_1_1PackedContainer.html#ab3356eb08f7e738c255671ae42fe5639',1,'pfc::PackedContainer::begin() const noexcept'],['../classpfc_1_1PackedContainer.html#a7dc792faaf836c94b18c255cc338bf5e',1,'pfc::PackedContainer::begin() noexcept'],['../classpfc_1_1PackedVector.html#a5b8775b287a46dc2359f885b6b4f14e2',1,'pfc::PackedVector::begin()']]],
+  ['best_8',['best',['../structpfc_1_1compression_1_1LZ77Config.html#a67cf8cf6a0543f49ecdf101637f45ed7',1,'pfc::compression::LZ77Config']]],
+  ['bit_5fcount_9',['bit_count',['../classpfc_1_1BasicBitWriter.html#a4fa85fcec39f5c36b8119254948776bb',1,'pfc::BasicBitWriter::bit_count()'],['../classpfc_1_1SafeBitWriter.html#a614f5a72e80ed6d3d11948580c810856',1,'pfc::SafeBitWriter::bit_count()']]],
+  ['bit_5fposition_10',['bit_position',['../classpfc_1_1bit__streambuf.html#a8471ba86641093c165bf2dc21647c9cd',1,'pfc::bit_streambuf']]],
+  ['bit_5fstreambuf_11',['bit_streambuf',['../classpfc_1_1bit__streambuf.html#a190c4cdb63f86dd51a01e1968e3eeb13',1,'pfc::bit_streambuf']]],
+  ['bitreader_12',['bitreader',['../classpfc_1_1BitReader.html#a8726fb1010e530b9d2f1ef7cce6c7a70',1,'pfc::BitReader::BitReader(const uint8_t *ptr, size_t size) noexcept'],['../classpfc_1_1BitReader.html#a9e3144e4e72eacc7b91ce4c817165875',1,'pfc::BitReader::BitReader(std::span&lt; const uint8_t &gt; buffer) noexcept']]],
+  ['bitwriter_13',['bitwriter',['../classpfc_1_1BitWriter.html#ab445a11b88ff430a15e33c0a10bd0a92',1,'pfc::BitWriter::BitWriter(uint8_t *ptr) noexcept'],['../classpfc_1_1BitWriter.html#aeff545ccd20b9c5d951ac64346e6a16c',1,'pfc::BitWriter::BitWriter(std::span&lt; uint8_t &gt; buffer) noexcept']]],
+  ['blockranksupport_14',['BlockRankSupport',['../classpfc_1_1succinct_1_1BlockRankSupport.html#acf39a0dcaf54e6416c326cc48177d37f',1,'pfc::succinct::BlockRankSupport']]],
+  ['bottom_15',['Bottom',['../classpfc_1_1Bottom.html#a2754e06ba4d95b91e11ae405802a8b6f',1,'pfc::Bottom']]],
+  ['buffer_16',['buffer',['../classpfc_1_1BasicBitWriter.html#a11177aa5384991e32bf8319f4d560cbd',1,'pfc::BasicBitWriter::buffer()'],['../classpfc_1_1SafeBitWriter.html#aae29c2abd678b43dbac4537ab2b10213',1,'pfc::SafeBitWriter::buffer()'],['../classpfc_1_1BasicBitWriter.html#a5d69feb8e6e8710ec6ae44177df97a25',1,'pfc::BasicBitWriter::buffer()']]],
+  ['buffer_5fsize_17',['buffer_size',['../namespacepfc.html#a18a07b295d1d19f80249f2d87d4de72e',1,'pfc']]],
+  ['buffer_5fsize_5fmanip_18',['buffer_size_manip',['../structpfc_1_1buffer__size__manip.html#ab944532c469b76aafe4d0e915edd6479',1,'pfc::buffer_size_manip']]],
+  ['build_19',['build',['../classpfc_1_1succinct_1_1BlockRankSupport.html#a2878318e0100a1a0f240f1d0974f70ed',1,'pfc::succinct::BlockRankSupport']]],
+  ['build_5frank_5fsupport_20',['build_rank_support',['../classpfc_1_1succinct_1_1SuccinctBitVector.html#a4373cd8ac92996c495e31b8b46b008e8',1,'pfc::succinct::SuccinctBitVector']]],
+  ['bytes_5fread_21',['bytes_read',['../classpfc_1_1stream__bit__reader.html#abed0be09ddb071e3090fcbac44364c36',1,'pfc::stream_bit_reader']]],
+  ['bytes_5fwritten_22',['bytes_written',['../classpfc_1_1BitWriter.html#a18d1b8c079f0129792c0c51c0207ecf9',1,'pfc::BitWriter::bytes_written()'],['../classpfc_1_1stream__bit__writer.html#ac32cb68414420fee9c5c631d917e92f4',1,'pfc::stream_bit_writer::bytes_written()']]]
+];
