@@ -16,3 +16,15 @@ site/
 
 # Doxygen output
 docs/api-reference/
+
+# Python
+__pycache__/
+*.egg-info/
+*.so
+*.pyd
+dist/
+.venv/
+.pytest_cache/
+.hypothesis/
+.coverage
+*.whl

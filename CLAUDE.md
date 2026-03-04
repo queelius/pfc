@@ -95,7 +95,7 @@ struct SomeCodec {
 | `succinct.hpp` | SuccinctBitVector with O(1) rank/select |
 | `huffman.hpp` | Huffman coding |
 | `lz77.hpp` | LZ77 compression |
-| `arithmetic_coding.hpp` | Arithmetic coding (production), range coding (experimental) |
+| `arithmetic_coding.hpp` | Arithmetic coding and range coding |
 | `crc.hpp` | CRC8, CRC16, CRC32 checksums |
 | `pfc.hpp` | Main header - includes everything |
 
@@ -118,17 +118,35 @@ Tests use Catch2 with sections and tags:
 - `test_stream_arithmetic.cpp` → `test_stream_arithmetic` - Stream I/O, arithmetic coding
 - `test_crc.cpp` → `test_crc` - CRC checksums
 - `test_new_codecs.cpp` → `test_new_codecs` - VByte, ExpGolomb, EliasOmega
-- `test_succinct.cpp` → `test_succinct` - SuccinctBitVector (3167 assertions)
+- `test_succinct.cpp` → `test_succinct` - SuccinctBitVector, RoaringBitmap (30,276 assertions)
 
-Current status: 86% pass rate (6/7 suites), 3477+ assertions passing.
+Current status: 100% pass rate (7/7 suites), 30,000+ assertions passing.
+
+## Python Bindings
+
+The `python/` directory contains pybind11 bindings for PFC.
+
+### Building & Testing
+```bash
+cd python
+pip install -e ".[dev]"    # Install with dev deps (pytest, mypy, etc.)
+pytest                      # Run Python tests (109 passed, 5 skipped)
+```
+
+### Structure
+- `python/bindings/` — C++ pybind11 binding code
+- `python/src/pfc_python/` — Pure Python layer (high-level API, codec wrappers)
+- `python/tests/` — pytest test suite
+- `python/pyproject.toml` — Build config (scikit-build-core + pybind11)
+
+### How it works
+`python/CMakeLists.txt` sets `PFC_INCLUDE_DIR` to `../include` (the repo's own headers). The build is self-contained — no sibling directory needed.
 
 ## Known Issues
 
-1. **Range coding** (arithmetic_coding.hpp): Works only for short sequences (2-3 bytes). Use arithmetic coding instead, which is fully functional.
+1. **advanced_demo**: May have infinite loops in certain sections.
 
-2. **advanced_demo**: May have infinite loops in certain sections.
-
-3. **Floating point precision**: Some edge cases with very small/large values.
+2. **Floating point precision**: Some edge cases with very small/large values.
 
 ## Design Principles
 

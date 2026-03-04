@@ -1,0 +1,81 @@
+[build-system]
+requires = ["scikit-build-core>=0.5", "pybind11>=2.11"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "pfc"
+version = "1.0.0"
+description = "Python bindings for PFC (Prefix-Free Codecs) - zero-copy compression library"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "PFC Library Authors"}
+]
+keywords = ["compression", "codecs", "prefix-free", "zero-copy", "bitvector", "succinct"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: C++",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+    "Topic :: System :: Archiving :: Compression",
+    "Typing :: Typed",
+]
+requires-python = ">=3.9"
+dependencies = [
+    "numpy>=1.20",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "mypy>=1.0",
+    "black>=23.0",
+    "ruff>=0.1",
+]
+docs = [
+    "sphinx>=6.0",
+    "sphinx-rtd-theme>=1.3",
+    "myst-parser>=2.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/queelius/pfc"
+Documentation = "https://queelius.github.io/pfc/"
+Repository = "https://github.com/queelius/pfc"
+Issues = "https://github.com/queelius/pfc/issues"
+
+[tool.scikit-build]
+cmake.minimum-version = "3.15"
+cmake.args = ["-DCMAKE_CXX_STANDARD=20"]
+wheel.packages = ["src/pfc_python"]
+wheel.install-dir = "pfc_python"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short"
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+strict = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4"]
+
+[tool.black]
+line-length = 100
+target-version = ["py39", "py310", "py311", "py312"]
